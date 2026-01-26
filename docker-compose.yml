@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  marketero-v1:
+    build: .
+    container_name: marketero-restaurantes
+    volumes:
+      - ./v1-data:/data
+      - ./v1-workspace:/marketero/workspace
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=development
+      - MARKETERO_VERSION=v1-restaurantes
+    stdin_open: true
+    tty: true
+
+  marketero-v2:
+    build: .
+    container_name: marketero-ifixx
+    volumes:
+      - ./v2-data:/data
+      - ./v2-workspace:/marketero/workspace
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=development
+      - MARKETERO_VERSION=v2-ifixx
+    stdin_open: true
+    tty: true
+
+volumes:
+  v1-data:
+  v2-data:
