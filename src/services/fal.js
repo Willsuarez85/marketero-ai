@@ -7,8 +7,11 @@ import pLimit from 'p-limit';
 const FAL_KEY             = process.env.FAL_KEY;
 const CONCURRENCY_LIMIT   = Number(process.env.FAL_CONCURRENCY_LIMIT) || 3;
 const QUEUE_URL           = 'https://queue.fal.run/fal-ai/nano-banana-pro';
+const QUEUE_URL_EDIT      = 'https://queue.fal.run/fal-ai/nano-banana-pro/edit';
 const POLL_INTERVAL_MS    = 3_000;
 const POLL_TIMEOUT_MS     = 120_000;
+
+const FETCH_TIMEOUT_MS    = 30_000;
 
 const limit = pLimit(CONCURRENCY_LIMIT);
 
@@ -18,6 +21,12 @@ const authHeaders = () => ({
   Authorization:  `Key ${FAL_KEY}`,
   'Content-Type': 'application/json',
 });
+
+function timeoutSignal(ms = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
 
 // ---------------------------------------------------------------------------
 // Internal: submit a generation request to the fal.ai queue
@@ -33,11 +42,37 @@ async function submitToQueue(prompt, options = {}) {
       num_images:            1,
       enable_safety_checker: true,
     }),
+    signal: timeoutSignal(),
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Queue submit failed – ${res.status} ${res.statusText}: ${text}`);
+  }
+
+  return res.json(); // { request_id, response_url, status_url }
+}
+
+// ---------------------------------------------------------------------------
+// Internal: submit an edit request to the fal.ai /edit queue
+// ---------------------------------------------------------------------------
+
+async function submitToEditQueue(prompt, imageUrls, options = {}) {
+  const res = await fetch(QUEUE_URL_EDIT, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({
+      prompt,
+      image_urls: imageUrls,
+      aspect_ratio: options.aspectRatio || 'landscape_4_3',
+      resolution: options.resolution || 'high',
+    }),
+    signal: timeoutSignal(),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Edit queue submit failed – ${res.status} ${res.statusText}: ${text}`);
   }
 
   return res.json(); // { request_id, response_url, status_url }
@@ -51,7 +86,7 @@ async function pollUntilDone(statusUrl) {
   const deadline = Date.now() + POLL_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
-    const res = await fetch(statusUrl, { headers: authHeaders() });
+    const res = await fetch(statusUrl, { headers: authHeaders(), signal: timeoutSignal() });
 
     if (!res.ok) {
       throw new Error(`Status poll failed – ${res.status} ${res.statusText}`);
@@ -75,7 +110,7 @@ async function pollUntilDone(statusUrl) {
 // ---------------------------------------------------------------------------
 
 async function fetchResult(responseUrl) {
-  const res = await fetch(responseUrl, { headers: authHeaders() });
+  const res = await fetch(responseUrl, { headers: authHeaders(), signal: timeoutSignal() });
 
   if (!res.ok) {
     throw new Error(`Result fetch failed – ${res.status} ${res.statusText}`);
@@ -89,7 +124,9 @@ async function fetchResult(responseUrl) {
 // ---------------------------------------------------------------------------
 
 async function attemptGeneration(prompt, options) {
-  const queued = await submitToQueue(prompt, options);
+  const queued = options.imageUrls?.length
+    ? await submitToEditQueue(prompt, options.imageUrls, options)
+    : await submitToQueue(prompt, options);
   await pollUntilDone(queued.status_url);
   const result = await fetchResult(queued.response_url);
 
@@ -133,7 +170,7 @@ export async function generateImage(prompt, options = {}) {
 export async function checkImageStatus(requestId) {
   try {
     const statusUrl = `${QUEUE_URL}/requests/${requestId}/status`;
-    const res = await fetch(statusUrl, { headers: authHeaders() });
+    const res = await fetch(statusUrl, { headers: authHeaders(), signal: timeoutSignal() });
 
     if (!res.ok) {
       console.error(`[services:fal] checkImageStatus failed – ${res.status} ${res.statusText}`);

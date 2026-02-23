@@ -8,19 +8,24 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "worker": "node src/worker.js",
-    "dev:worker": "node --watch src/worker.js"
+    "dev:worker": "node --watch src/worker.js",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "express": "^4.21.0",
-    "@supabase/supabase-js": "^2.45.0",
     "@anthropic-ai/sdk": "^0.30.0",
-    "openai": "^4.70.0",
-    "stripe": "^17.0.0",
+    "@supabase/supabase-js": "^2.45.0",
     "dotenv": "^16.4.0",
+    "express": "^4.21.0",
     "node-cron": "^3.0.0",
-    "p-limit": "^6.1.0"
+    "openai": "^4.70.0",
+    "p-limit": "^6.1.0",
+    "stripe": "^17.0.0"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
   }
 }

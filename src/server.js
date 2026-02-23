@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { healthCheck } from './db/client.js';
 import { ghlWebhookRouter } from './webhooks/ghl.js';
+import { startScheduler } from './content/scheduler.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -50,28 +51,7 @@ app.post('/webhooks/stripe', (_req, res) => {
   res.status(200).json({ received: true });
 });
 
-// Review queue — minimal UI placeholder
-app.get('/review-queue', (_req, res) => {
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head><meta charset="utf-8"><title>Marketero — Review Queue</title></head>
-    <body style="font-family:system-ui,sans-serif;padding:2rem;">
-      <h1>Review Queue</h1>
-      <p>Coming Day 7</p>
-    </body>
-    </html>
-  `);
-});
-
-// Approve / reject — not implemented yet
-app.post('/review-queue/:id/approve', (_req, res) => {
-  res.status(501).json({ error: 'Not implemented — coming Day 7' });
-});
-
-app.post('/review-queue/:id/reject', (_req, res) => {
-  res.status(501).json({ error: 'Not implemented — coming Day 7' });
-});
+// Review queue — replaced by operator review via WhatsApp (src/bot/operator.js)
 
 // ---------------------------------------------------------------------------
 // Error handling middleware
@@ -89,7 +69,10 @@ app.listen(PORT, () => {
   console.log(`[server] Health:        ${BASE_URL}/health`);
   console.log(`[server] GHL webhook:   ${BASE_URL}/webhooks/ghl`);
   console.log(`[server] Stripe webhook:${BASE_URL}/webhooks/stripe`);
-  console.log(`[server] Review queue:  ${BASE_URL}/review-queue`);
+
+  // Start the daily content scheduler
+  startScheduler();
+  console.log('[server] Scheduler started');
 });
 
 export default app;

@@ -6,6 +6,8 @@ import { getRestaurantWithBrain } from '../db/queries/restaurants.js';
 import { createContentItem, updateContentStatus } from '../db/queries/content.js';
 import { generateCaption, generateImagePrompt } from '../services/claude.js';
 import { generateImage } from '../services/fal.js';
+import { notifyOperatorNewContent } from '../bot/operator.js';
+import { getRandomIndustryInsight } from '../db/queries/brains.js';
 
 // ---------------------------------------------------------------------------
 // Main orchestrator
@@ -49,6 +51,16 @@ export async function generateContent(restaurantId, contentType = 'dish') {
 
     console.log(`[content:generate] Loaded restaurant: ${restaurant.name || restaurantId}`);
 
+    // Extract approved photos from brain for fal.ai /edit endpoint
+    const brain = restaurant.brain;
+    const approvedPhotos = (brain?.photo_library || [])
+      .filter(p => p.approved && p.url)
+      .slice(0, 5)
+      .map(p => p.url);
+
+    const hasRealPhotos = approvedPhotos.length > 0;
+    console.log(`[content:generate] Approved photos: ${approvedPhotos.length}`);
+
     // ------------------------------------------------------------------
     // 2. Create content item (status = 'generating')
     // ------------------------------------------------------------------
@@ -70,17 +82,28 @@ export async function generateContent(restaurantId, contentType = 'dish') {
     console.log(`[content:generate] Created content item ${contentItem.id}`);
 
     // ------------------------------------------------------------------
-    // 3. Generate caption & image prompt in parallel
+    // 3. Fetch industry insight + generate caption & image prompt
     // ------------------------------------------------------------------
     let caption = null;
     let imagePrompt = null;
+
+    // Get a random industry insight for inspiration
+    let industryInsight = null;
+    try {
+      industryInsight = await getRandomIndustryInsight(restaurant.cuisine_type || 'mexican');
+      if (industryInsight) {
+        console.log(`[content:generate] Industry insight loaded`);
+      }
+    } catch (insightErr) {
+      console.warn(`[content:generate] Failed to load industry insight:`, insightErr.message);
+    }
 
     try {
       console.log(`[content:generate] Generating caption and image prompt in parallel...`);
 
       [caption, imagePrompt] = await Promise.all([
-        generateCaption(restaurant, contentType, restaurant.brain),
-        generateImagePrompt(restaurant, contentType, restaurant.brain),
+        generateCaption(restaurant, contentType, brain, industryInsight),
+        generateImagePrompt(restaurant, contentType, brain, hasRealPhotos),
       ]);
     } catch (err) {
       console.error(`[content:generate] Error during parallel generation:`, err.message);
@@ -108,8 +131,10 @@ export async function generateContent(restaurantId, contentType = 'dish') {
 
     if (imagePrompt) {
       try {
-        console.log(`[content:generate] Generating image with fal.ai...`);
-        const imageResult = await generateImage(imagePrompt);
+        console.log(`[content:generate] Generating image with fal.ai...${hasRealPhotos ? ' (edit mode)' : ' (base mode)'}`);
+        const imageResult = await generateImage(imagePrompt, {
+          imageUrls: hasRealPhotos ? approvedPhotos : undefined,
+        });
 
         if (imageResult && imageResult.imageUrl) {
           imageUrl = imageResult.imageUrl;
@@ -135,6 +160,13 @@ export async function generateContent(restaurantId, contentType = 'dish') {
         image_prompt: imagePrompt,
       });
       console.log(`[content:generate] Content ${contentItem.id} moved to 'human_review'`);
+
+      // Notify operator via WhatsApp
+      try {
+        await notifyOperatorNewContent(contentItem.id);
+      } catch (notifyErr) {
+        console.error(`[content:generate] Failed to notify operator:`, notifyErr.message);
+      }
     } catch (err) {
       console.error(`[content:generate] Failed to update content to 'human_review':`, err.message);
       // Attempt to mark as failed since we couldn't transition properly

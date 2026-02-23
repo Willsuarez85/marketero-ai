@@ -39,6 +39,36 @@ export async function createJob(restaurantId, jobType, scheduledFor, metadata = 
  * @param {number} [limit=10] - Maximum number of jobs to return.
  * @returns {Promise<object[]>} An array of pending job records, or empty array on failure.
  */
+/**
+ * Checks if a restaurant already has a pending or processing job of the given type.
+ * Used to avoid creating duplicate daily_content jobs.
+ * @param {string} restaurantId - The UUID of the restaurant.
+ * @param {string} jobType - The job type to check for.
+ * @returns {Promise<boolean>} True if a pending/processing job exists.
+ */
+export async function hasPendingJob(restaurantId, jobType) {
+  try {
+    const { data, error } = await supabase
+      .from('scheduled_jobs')
+      .select('id')
+      .eq('restaurant_id', restaurantId)
+      .eq('job_type', jobType)
+      .in('status', ['pending', 'processing'])
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[db:jobs] Error in hasPendingJob:', error.message);
+      return false;
+    }
+
+    return !!data;
+  } catch (err) {
+    console.error('[db:jobs] Exception in hasPendingJob:', err.message);
+    return false;
+  }
+}
+
 export async function getPendingJobs(limit = 10) {
   try {
     const { data, error } = await supabase

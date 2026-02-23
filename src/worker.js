@@ -5,9 +5,13 @@ import { logMessage } from './db/queries/whatsapp.js';
 import { getPendingJobs, claimJob, completeJob, failJob } from './db/queries/jobs.js';
 import { classifyIntent } from './bot/classifier.js';
 import { routeMessage } from './bot/conversation.js';
+import { handleOperatorMessage } from './bot/operator.js';
 import { sendWhatsAppMessage } from './services/ghl.js';
 import { generateDailyContent } from './content/generate.js';
 import { publishContent } from './content/publish.js';
+import { transcribeAudio } from './services/whisper.js';
+
+const OPERATOR_PHONE = process.env.OPERATOR_PHONE;
 
 const WEBHOOK_INTERVAL = parseInt(process.env.WEBHOOK_WORKER_INTERVAL_MS, 10) || 5000;
 const JOB_INTERVAL = parseInt(process.env.JOB_POLLER_INTERVAL_MS, 10) || 60000;
@@ -85,7 +89,34 @@ async function processWebhooks() {
           `[worker/webhooks] event ${event.id} — type: ${event.event_type || 'unknown'}, phone: ${phone || 'none'}`,
         );
 
+        // Transcribe audio messages via Whisper
+        let effectiveMessage = message;
+        let transcription = null;
+        if (mediaType === 'audio' && mediaUrl) {
+          const result = await transcribeAudio(mediaUrl);
+          if (result?.text) {
+            effectiveMessage = result.text;
+            transcription = result.text;
+            console.log(`[worker/webhooks] Audio transcribed: "${transcription.substring(0, 80)}..."`);
+          } else {
+            // Whisper failed — ask client to type
+            if (contactId) {
+              await sendWhatsAppMessage(contactId, 'No pude entender tu nota de voz. Me lo puedes escribir?');
+            }
+            await markWebhookProcessed(event.id);
+            continue;
+          }
+        }
+
         if (phone) {
+          // Operator messages bypass restaurant lookup entirely
+          if (OPERATOR_PHONE && phone === OPERATOR_PHONE) {
+            console.log(`[worker/webhooks] Routing to operator handler`);
+            await handleOperatorMessage({ message: effectiveMessage, mediaUrl, mediaType, contactId });
+            await markWebhookProcessed(event.id);
+            continue;
+          }
+
           // Look up which restaurant owns this phone number
           const restaurant = await findRestaurantByPhone(phone);
 
@@ -95,9 +126,10 @@ async function processWebhooks() {
               restaurant_id: restaurant.id,
               ghl_event_id: event.ghl_event_id || null,
               direction: 'inbound',
-              message: message || null,
+              message: effectiveMessage || null,
               media_url: mediaUrl || null,
               media_type: mediaType,
+              transcription,
             });
 
             console.log(
@@ -105,7 +137,7 @@ async function processWebhooks() {
             );
 
             // Classify the intent
-            const intent = await classifyIntent(message || '');
+            const intent = await classifyIntent(effectiveMessage || '');
 
             console.log(
               `[worker/webhooks] classified intent: ${intent.intent} (confidence: ${intent.confidence}, method: ${intent.method})`,
@@ -129,7 +161,7 @@ async function processWebhooks() {
             // Route the message
             const result = await routeMessage(
               restaurant,
-              { message, mediaUrl, mediaType, contactId, ghlEventId: event.ghl_event_id },
+              { message: effectiveMessage, mediaUrl, mediaType, contactId, ghlEventId: event.ghl_event_id },
               intent,
             );
 

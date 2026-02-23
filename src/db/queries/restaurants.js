@@ -143,6 +143,29 @@ export async function updateRestaurantStatus(id, status) {
  * @param {object} data - The fields for the new restaurant.
  * @returns {Promise<object|null>} The created restaurant record, or null on failure.
  */
+/**
+ * Returns all restaurants with status 'active'.
+ * @returns {Promise<object[]>} Array of active restaurant records, or empty array on failure.
+ */
+export async function getActiveRestaurants() {
+  try {
+    const { data, error } = await supabase
+      .from('restaurants')
+      .select('*')
+      .eq('status', 'active');
+
+    if (error) {
+      console.error('[db:restaurants] Error in getActiveRestaurants:', error.message);
+      return [];
+    }
+
+    return data || [];
+  } catch (err) {
+    console.error('[db:restaurants] Exception in getActiveRestaurants:', err.message);
+    return [];
+  }
+}
+
 export async function createRestaurant(data) {
   try {
     const { data: created, error } = await supabase

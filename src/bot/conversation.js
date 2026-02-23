@@ -8,20 +8,26 @@
 import { getConversationState, setConversationState, clearConversationState } from '../db/queries/conversation.js';
 import { getPendingApproval, updateContentStatus, getContentByStatus } from '../db/queries/content.js';
 import { schedulePublishBuffer } from '../content/publish.js';
+import { logMemory } from '../db/queries/memory.js';
+import { handleOnboardingStep, startSession, shouldStartOnboarding, getNextSessionNumber } from '../onboarding/sessions.js';
 
 // ---------------------------------------------------------------------------
 // Flow handler stub — actual flow handlers are built in later days
 // ---------------------------------------------------------------------------
 
 /**
- * Stub handler for active conversation flows (onboarding, emergency_post, etc.).
- * Will be replaced with real flow logic in subsequent implementation phases.
+ * Routes active conversation flows to the appropriate handler.
  * @param {object} restaurant       - The restaurant record.
  * @param {object} conversationState - The active conversation state from DB.
  * @param {object} messageData      - { message, mediaUrl, mediaType, contactId, ghlEventId }
  * @returns {Promise<{ action: string, response: string }>}
  */
 export async function handleFlowStep(restaurant, conversationState, messageData) {
+  if (conversationState.current_flow === 'onboarding') {
+    return handleOnboardingStep(restaurant, conversationState, messageData);
+  }
+
+  // Other flows (emergency_post, etc.) — stub for future phases
   return { action: 'flow_continue', response: 'Procesando...' };
 }
 
@@ -47,6 +53,9 @@ async function handleApproval(restaurant) {
     // Schedule the publish buffer so the post goes live after the delay
     await schedulePublishBuffer(pending.id, restaurant.id);
 
+    // Log memory
+    logMemory(restaurant.id, 'approval', 'Post aprobado por cliente', { contentId: pending.id }).catch(() => {});
+
     return {
       action: 'approval_accepted',
       contentId: pending.id,
@@ -70,6 +79,9 @@ async function handleRejection(restaurant) {
     }
 
     await updateContentStatus(pending.id, 'generating');
+
+    // Log memory
+    logMemory(restaurant.id, 'rejection', 'Post rechazado por cliente', { contentId: pending.id }).catch(() => {});
 
     return {
       action: 'rejection_accepted',
@@ -204,7 +216,15 @@ export async function routeMessage(restaurant, messageData, intent) {
       return await handleFlowStep(restaurant, conversationState, messageData);
     }
 
-    // 2. Route by intent
+    // 2. Check if restaurant needs onboarding
+    if (shouldStartOnboarding(restaurant)) {
+      // "SEGUIR" or any message starts/continues onboarding
+      const brain = restaurant.brain || null;
+      const nextSession = getNextSessionNumber(brain);
+      return startSession(restaurant, nextSession);
+    }
+
+    // 3. Route by intent
     switch (intent.intent) {
       case 'approval':
         return await handleApproval(restaurant);

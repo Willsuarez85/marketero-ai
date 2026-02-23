@@ -159,6 +159,57 @@ export async function updateContentStatus(id, newStatus, extraFields = {}) {
 }
 
 /**
+ * Gets the oldest content item with status 'human_review' across all restaurants.
+ * Used by the operator to approve/reject the next item in the queue.
+ * @returns {Promise<object|null>} The oldest human_review content item, or null if none found.
+ */
+export async function getOldestHumanReview() {
+  try {
+    const { data, error } = await supabase
+      .from('content_items')
+      .select('*, restaurants(name)')
+      .eq('status', 'human_review')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[db:content_items] Error in getOldestHumanReview:', error.message);
+      return null;
+    }
+
+    return data || null;
+  } catch (err) {
+    console.error('[db:content_items] Exception in getOldestHumanReview:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Counts content items with a given status.
+ * @param {string} status - The status to count.
+ * @returns {Promise<number>} The count, or 0 on failure.
+ */
+export async function countByStatus(status) {
+  try {
+    const { count, error } = await supabase
+      .from('content_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', status);
+
+    if (error) {
+      console.error('[db:content_items] Error in countByStatus:', error.message);
+      return 0;
+    }
+
+    return count || 0;
+  } catch (err) {
+    console.error('[db:content_items] Exception in countByStatus:', err.message);
+    return 0;
+  }
+}
+
+/**
  * Gets recent content items for a restaurant, ordered newest first.
  * @param {string} restaurantId - The UUID of the restaurant.
  * @param {number} [limit=10] - Maximum number of records to return.

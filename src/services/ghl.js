@@ -5,6 +5,7 @@
 const GHL_API_KEY      = process.env.GHL_API_KEY;
 const GHL_LOCATION_ID  = process.env.GHL_LOCATION_ID;
 const MESSAGE_THROTTLE_MS = Number(process.env.MESSAGE_THROTTLE_MS) || 2000;
+const GHL_TIMEOUT_MS   = 15_000;
 
 const BASE = 'https://services.leadconnectorhq.com';
 
@@ -16,6 +17,12 @@ const headers = () => ({
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+function timeoutSignal() {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), GHL_TIMEOUT_MS);
+  return controller.signal;
+}
+
 // ---- WhatsApp text message ------------------------------------------------
 
 export async function sendWhatsAppMessage(contactId, message) {
@@ -26,6 +33,7 @@ export async function sendWhatsAppMessage(contactId, message) {
       method: 'POST',
       headers: headers(),
       body: JSON.stringify({ type: 'WhatsApp', contactId, message }),
+      signal: timeoutSignal(),
     });
 
     if (!res.ok) {
@@ -56,6 +64,7 @@ export async function sendWhatsAppImage(contactId, imageUrl, caption) {
         message: caption,
         attachments: [imageUrl],
       }),
+      signal: timeoutSignal(),
     });
 
     if (!res.ok) {
@@ -82,6 +91,7 @@ export async function lookupContactByPhone(phone) {
     const res = await fetch(url, {
       method: 'GET',
       headers: headers(),
+      signal: timeoutSignal(),
     });
 
     if (!res.ok) {
@@ -113,6 +123,7 @@ export async function publishSocialPost(locationId, platforms, caption, imageUrl
       method: 'POST',
       headers: headers(),
       body: JSON.stringify(body),
+      signal: timeoutSignal(),
     });
 
     if (!res.ok) {
