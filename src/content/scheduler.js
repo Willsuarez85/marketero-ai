@@ -8,6 +8,7 @@
 import cron from 'node-cron';
 import { getActiveRestaurants } from '../db/queries/restaurants.js';
 import { createJob, hasPendingJob } from '../db/queries/jobs.js';
+import { checkAutopilotReminders } from '../bot/handlers/autopilot.js';
 
 const DEFAULT_DELIVERY_HOUR = 9; // 9 AM local time
 
@@ -106,8 +107,14 @@ export function startScheduler() {
     await scheduleDailyContent();
   });
 
+  // Every 15 minutes — check for autopilot reminders
+  cron.schedule('*/15 * * * *', async () => {
+    console.log('[scheduler] Autopilot check — scanning for unresponsive clients');
+    await checkAutopilotReminders();
+  });
+
   // Run once on startup
   scheduleDailyContent();
 
-  console.log('[scheduler] Cron scheduler started (hourly + midnight UTC)');
+  console.log('[scheduler] Cron scheduler started (hourly + midnight UTC + autopilot every 15min)');
 }

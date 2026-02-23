@@ -162,8 +162,9 @@ const EMERGENCY_SHORT = [
 ];
 
 // --- FAQ -------------------------------------------------------------------
-// Uses accent-stripped text.
+// Uses accent-stripped text. Covers the 8 main FAQ categories.
 const FAQ_TEXT = [
+  // General service questions
   /\bcuanto cuesta\b/,
   /\bprecio\b/,
   /\bcomo funciona\b/,
@@ -172,6 +173,37 @@ const FAQ_TEXT = [
   /\bcomo cancelo\b/,
   /\bhow much\b/,
   /\bhow does it work\b/,
+  // Published content questions
+  /\bque se publico\b/,
+  /\bque publicamos\b/,
+  /\besta semana\b/,
+  /\bposts de esta semana\b/,
+  /\bque salio\b/,
+  // Next post questions
+  /\bproximo post\b/,
+  /\bcuando sale\b/,
+  /\bcuando publican\b/,
+  /\bmanana sale\b/,
+  // Autopilot questions
+  /\bpiloto automatico\b/,
+  /\bautopilot\b/,
+  /\bactivar automatico\b/,
+  /\bdesactivar automatico\b/,
+  // Engagement / stats questions
+  /\bengagement\b/,
+  /\bestadisticas\b/,
+  /\bcomo estuvo\b/,
+  /\bcuantos likes\b/,
+  /\bresultados\b/,
+  // Pause / cancel service
+  /\bpausar servicio\b/,
+  /\bpausar\b/,
+  /\bpausa\b/,
+  /\bdescanso\b/,
+  // Change request
+  /\bcambiar el post\b/,
+  /\bpost de manana\b/,
+  /\bcambiar manana\b/,
 ];
 
 // --- Greeting --------------------------------------------------------------

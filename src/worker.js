@@ -10,6 +10,9 @@ import { sendWhatsAppMessage } from './services/ghl.js';
 import { generateDailyContent } from './content/generate.js';
 import { publishContent } from './content/publish.js';
 import { transcribeAudio } from './services/whisper.js';
+import { handleAutopilotPublish, checkAutopilotReminders } from './bot/handlers/autopilot.js';
+import { generateEmergencyContent } from './content/emergency.js';
+import { sendWhatsAppMessage as sendOperatorAlert } from './services/ghl.js';
 
 const OPERATOR_PHONE = process.env.OPERATOR_PHONE;
 
@@ -265,6 +268,40 @@ async function processJobs() {
               (publishResult.ghlPostId ? `, ghlPostId=${publishResult.ghlPostId}` : '') +
               (publishResult.error ? `, error=${publishResult.error}` : ''),
             );
+            break;
+          }
+
+          case 'autopilot_reminder': {
+            const reminderResult = await checkAutopilotReminders();
+            console.log(
+              `[worker/jobs] autopilot_reminder job ${job.id} result: ${reminderResult.reminded} reminded, ${reminderResult.skipped} skipped`,
+            );
+            break;
+          }
+
+          case 'autopilot_publish': {
+            const autopilotResult = await handleAutopilotPublish(job);
+            console.log(
+              `[worker/jobs] autopilot_publish job ${job.id} result: success=${autopilotResult.success}` +
+              (autopilotResult.error ? `, error=${autopilotResult.error}` : ''),
+            );
+            break;
+          }
+
+          case 'emergency_post': {
+            const emergencyMeta = job.metadata || {};
+            if (emergencyMeta.restaurant_id && emergencyMeta.details) {
+              const emergResult = await generateEmergencyContent(
+                emergencyMeta.restaurant_id,
+                emergencyMeta.details,
+              );
+              console.log(
+                `[worker/jobs] emergency_post job ${job.id} result: success=${emergResult.success}` +
+                (emergResult.contentId ? `, contentId=${emergResult.contentId}` : ''),
+              );
+            } else {
+              console.error(`[worker/jobs] emergency_post job ${job.id} missing required metadata`);
+            }
             break;
           }
 

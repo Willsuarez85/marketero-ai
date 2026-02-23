@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { healthCheck } from './db/client.js';
 import { ghlWebhookRouter } from './webhooks/ghl.js';
+import { stripeWebhookRouter } from './webhooks/stripe.js';
 import { startScheduler } from './content/scheduler.js';
 
 const app = express();
@@ -15,6 +16,7 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 // Raw body parsing for webhook routes that need signature verification.
 // This MUST be registered before express.json() so it captures the raw Buffer.
 app.use('/webhooks/ghl', express.raw({ type: 'application/json' }));
+app.use('/webhooks/stripe', express.raw({ type: 'application/json' }));
 
 // JSON parsing for all other routes.
 app.use(express.json());
@@ -45,11 +47,8 @@ app.get('/health', async (_req, res) => {
 // GoHighLevel webhook receiver (signature-verified, saves to DB)
 app.use('/webhooks/ghl', ghlWebhookRouter);
 
-// Stripe webhook receiver — placeholder
-app.post('/webhooks/stripe', (_req, res) => {
-  // TODO: verify Stripe signature and process events
-  res.status(200).json({ received: true });
-});
+// Stripe webhook receiver (signature-verified, processes subscription events)
+app.use('/webhooks/stripe', stripeWebhookRouter);
 
 // Review queue — replaced by operator review via WhatsApp (src/bot/operator.js)
 

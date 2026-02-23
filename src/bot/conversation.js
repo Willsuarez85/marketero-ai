@@ -10,6 +10,9 @@ import { getPendingApproval, updateContentStatus, getContentByStatus } from '../
 import { schedulePublishBuffer } from '../content/publish.js';
 import { logMemory } from '../db/queries/memory.js';
 import { handleOnboardingStep, startSession, shouldStartOnboarding, getNextSessionNumber } from '../onboarding/sessions.js';
+import { handleEmergencyStep } from './handlers/emergency.js';
+import { handleFaqIntent } from './handlers/faq.js';
+import { handleEscalationFull, handleBotFailureEscalation } from './handlers/escalation.js';
 
 // ---------------------------------------------------------------------------
 // Flow handler stub — actual flow handlers are built in later days
@@ -27,7 +30,11 @@ export async function handleFlowStep(restaurant, conversationState, messageData)
     return handleOnboardingStep(restaurant, conversationState, messageData);
   }
 
-  // Other flows (emergency_post, etc.) — stub for future phases
+  if (conversationState.current_flow === 'emergency_post') {
+    return handleEmergencyStep(restaurant, conversationState, messageData);
+  }
+
+  // Other flows — stub for future phases
   return { action: 'flow_continue', response: 'Procesando...' };
 }
 
@@ -126,16 +133,10 @@ async function handleCancel(restaurant) {
 }
 
 /**
- * Handle escalation intent — hand off to a human agent.
+ * Handle escalation intent — full escalation with operator notification.
  */
-async function handleEscalation(restaurant) {
-  try {
-    await clearConversationState(restaurant.id);
-    return { action: 'escalation', response: 'Te conecto con nuestro equipo. Alguien te contactar\u00e1 pronto.' };
-  } catch (err) {
-    console.error('[bot:conversation] Error in handleEscalation:', err.message);
-    return { action: 'error', response: 'Estamos teniendo un problema t\u00e9cnico, te contactamos pronto.' };
-  }
+async function handleEscalation(restaurant, messageData) {
+  return handleEscalationFull(restaurant, messageData, 'user_requested');
 }
 
 /**
@@ -162,10 +163,10 @@ function handleGreeting() {
 }
 
 /**
- * Handle FAQ intent — placeholder until Day 13.
+ * Handle FAQ intent — delegates to the full FAQ handler.
  */
-function handleFaq() {
-  return { action: 'faq', response: null };
+async function handleFaq(restaurant, messageData) {
+  return handleFaqIntent(restaurant, messageData);
 }
 
 /**
@@ -176,12 +177,24 @@ function handleChangeRequest() {
 }
 
 /**
- * Handle unrecognized / other intent.
+ * Handle unrecognized / other intent — tracks consecutive failures for auto-escalation.
  */
-function handleOther() {
+async function handleOther(restaurant, messageData) {
+  // Check if we should auto-escalate after consecutive failures
+  const conversationState = await getConversationState(restaurant.id);
+  if (conversationState?.current_flow === 'bot_confusion') {
+    const result = await handleBotFailureEscalation(restaurant, messageData, conversationState);
+    if (result) return result;
+  }
+
+  // First unrecognized message — track it
+  const escalationResult = await handleBotFailureEscalation(restaurant, messageData, null);
+  if (escalationResult) return escalationResult;
+
+  // Fallback if escalation tracking fails
   return {
     action: 'unrecognized',
-    response: 'No entend\u00ed tu mensaje. Puedes responder SI para aprobar un post, NO para rechazarlo, o AYUDA si necesitas hablar con alguien.',
+    response: 'No entendi tu mensaje. Puedes responder SI para aprobar un post, NO para rechazarlo, o AYUDA si necesitas hablar con alguien.',
   };
 }
 
@@ -206,7 +219,7 @@ export async function routeMessage(restaurant, messageData, intent) {
     if (conversationState) {
       // Escalation and cancel ALWAYS override an active flow
       if (intent.intent === 'escalation') {
-        return await handleEscalation(restaurant);
+        return await handleEscalation(restaurant, messageData);
       }
       if (intent.intent === 'cancel') {
         return await handleCancel(restaurant);
@@ -236,7 +249,7 @@ export async function routeMessage(restaurant, messageData, intent) {
         return await handleCancel(restaurant);
 
       case 'escalation':
-        return await handleEscalation(restaurant);
+        return await handleEscalation(restaurant, messageData);
 
       case 'emergency':
         return await handleEmergency(restaurant);
@@ -245,14 +258,14 @@ export async function routeMessage(restaurant, messageData, intent) {
         return handleGreeting();
 
       case 'faq':
-        return handleFaq();
+        return await handleFaq(restaurant, messageData);
 
       case 'change_request':
         return handleChangeRequest();
 
       case 'other':
       default:
-        return handleOther();
+        return await handleOther(restaurant, messageData);
     }
   } catch (err) {
     console.error('[bot:conversation] Unexpected error in routeMessage:', err.message);
