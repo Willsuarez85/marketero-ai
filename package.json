@@ -1,0 +1,26 @@
+{
+  "name": "marketero-ai",
+  "version": "0.1.0",
+  "description": "$99/month social media content service for Latino restaurants via WhatsApp",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "worker": "node src/worker.js",
+    "dev:worker": "node --watch src/worker.js"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "@anthropic-ai/sdk": "^0.30.0",
+    "openai": "^4.70.0",
+    "stripe": "^17.0.0",
+    "dotenv": "^16.4.0",
+    "node-cron": "^3.0.0",
+    "p-limit": "^6.1.0"
+  }
+}
